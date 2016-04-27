@@ -21,7 +21,9 @@ public class TingService extends Service implements MediaPlayer.OnPreparedListen
 
 
     private MediaPlayer player;
-    private String urlMusic;
+    private String[] urlMusic;
+
+    private int position;
 
     private boolean isFirstPlays;
     private boolean isOver;
@@ -40,6 +42,10 @@ public class TingService extends Service implements MediaPlayer.OnPreparedListen
         intentFilter.addAction(TingConstants.ACTION_PLAY);
         intentFilter.addAction(TingConstants.ACTION_PAUSE);
         intentFilter.addAction(TingConstants.ACTION_STOP);
+        intentFilter.addAction(TingConstants.ACTION_SD_PROGRESS);
+        intentFilter.addAction(TingConstants.ACTION_LAST_MUSIC);
+        intentFilter.addAction(TingConstants.ACTION_NEST_MUSIC);
+        intentFilter.addAction(TingConstants.ACTION_TIME);
 
         mbr = new MyBroadcastReceiver();
         registerReceiver(mbr, intentFilter);
@@ -49,7 +55,7 @@ public class TingService extends Service implements MediaPlayer.OnPreparedListen
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        urlMusic = intent.getStringExtra("url");
+        urlMusic = intent.getStringArrayExtra("url");
         return START_NOT_STICKY;
     }
 
@@ -79,13 +85,17 @@ public class TingService extends Service implements MediaPlayer.OnPreparedListen
                 if (!isPlay()) {
                     if (!isFirstPlays) {
                         isFirstPlays = true;
-                        prepareMusic(urlMusic);
+                        prepareMusic(urlMusic[position]);
                     } else {
                         player.start();
+                        sendCurrentProgress();
+                        isOver = false;
                     }
 
 
                 }
+
+
             } else if (TingConstants.ACTION_PAUSE.equals(intent.getAction())) {
                 Log.e("----------", "暂停命令+service");
                 if (isPlay()) {
@@ -101,12 +111,54 @@ public class TingService extends Service implements MediaPlayer.OnPreparedListen
                     player.stop();
                     player.release();
                     player = null;
-                    unregisterReceiver(mbr);
+                    //unregisterReceiver(mbr);
 
-                    Intent stopIntent = new Intent();
-                    stopIntent.setAction(TingConstants.ACTION_CURRENT_STOP);
-                    sendBroadcast(stopIntent);
+
                 }
+            } else if (TingConstants.ACTION_SD_PROGRESS.equals(intent.getAction())) {
+                int currP = Integer.parseInt(intent.getStringExtra("data"));
+                if (isPlay()) {
+                    player.seekTo(currP);
+                }
+
+
+            } else if (TingConstants.ACTION_NEST_MUSIC.equals(intent.getAction())) {
+                if (isPlay()) {
+                    player.stop();
+                }
+                position++;
+                prepareMusic(urlMusic[position % urlMusic.length]);
+
+                Log.e("--------", "下标:" + position % urlMusic.length);
+
+            } else if (TingConstants.ACTION_LAST_MUSIC.equals(intent.getAction())) {
+                if (isPlay()) {
+                    player.stop();
+                }
+                if (position > 0) {
+                    position--;
+                } else {
+                    position = urlMusic.length - 1;
+                }
+
+                Log.e("--------", "下标:" + position);
+                prepareMusic(urlMusic[position]);
+            } else if (TingConstants.ACTION_TIME.equals(intent.getAction())) {
+
+                String va = intent.getStringExtra("time");
+                Log.e("---------", va);
+                if (isPlay()) {
+                    sendInfoToActivity(TingConstants.ACTION_SET_TEXT, 0);
+                    player.stop();
+                    isOver = true;
+                    isFirstPlays = false;
+                    player.release();
+                    player = null;
+
+
+                }
+
+
             }
         }
 
@@ -131,6 +183,7 @@ public class TingService extends Service implements MediaPlayer.OnPreparedListen
             Log.e("----------", "播放命令" + e.getMessage());
 
         }
+
         player.setOnPreparedListener(this);
         player.setOnCompletionListener(this);
         player.prepareAsync();
@@ -142,21 +195,31 @@ public class TingService extends Service implements MediaPlayer.OnPreparedListen
     public void onPrepared(MediaPlayer mp) {
         isFirstPlays = true;
         mp.start();
+
         totalTime = player.getDuration();
 
-        Intent totalIntent = new Intent();
-        totalIntent.setAction(TingConstants.ACTION_TOTAL_PROGRESS);
-        totalIntent.putExtra("total", totalTime);
-        sendBroadcast(totalIntent);
+        // Log.e("------------", "服务总时间" + totalTime);
 
-
+        sendInfoToActivity(TingConstants.ACTION_TOTAL_PROGRESS, totalTime);
         sendCurrentProgress();
-
+        isOver = false;
     }
 
     @Override
     public void onCompletion(MediaPlayer mp) {
-        prepareMusic(urlMusic);
+        prepareMusic(urlMusic[(position + 1) % urlMusic.length]);
+        position = position + 1;
+    }
+
+
+    /**
+     * 总进度
+     */
+    private void sendInfoToActivity(String action, int data) {
+        Intent totalIntent = new Intent();
+        totalIntent.setAction(action);
+        totalIntent.putExtra("total", data);
+        sendBroadcast(totalIntent);
     }
 
     /**
@@ -174,6 +237,8 @@ public class TingService extends Service implements MediaPlayer.OnPreparedListen
                     currentTimeIntent.setAction(TingConstants.ACTION_CURRENT_PROGRESS);
                     currentTimeIntent.putExtra("progress", currentTime);
                     sendBroadcast(currentTimeIntent);
+
+                    //Log.e("----------", "时间:" + currentTime);
 
                     if (totalTime == currentTime) {
                         isOver = true;

@@ -3,6 +3,8 @@
     <string name="action_settings">Settings</string>
     <string name="local_service_started">Start Service_</string>
     <string name="local_service_label">Label Service_</string>
+    <string name="con_firm">确定</string>
+    <string name="can_cel">取消</string>
 
 
 </resources>
